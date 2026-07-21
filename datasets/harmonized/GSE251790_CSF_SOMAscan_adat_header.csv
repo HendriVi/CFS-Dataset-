@@ -1,0 +1,33 @@
+line_number_1_based,field,value
+1,!Checksum,a74d576d461fd5cd1243293d8307659a851a5daf
+2,^HEADER,
+3,AdatId,GID-9ae36b59-c1a7-4d3e-a500-0069eb849749
+4,!Version,1.2
+5,!AssayType,PharmaServices
+6,!AssayVersion,V3.2
+7,!AssayRobot,TECAN 1
+8,!CreatedBy,PharmaServices
+9,!CreatedDate,2020-01-06
+10,!EnteredBy,BS
+11,!ExpDate,2019-12-12
+12,!GeneratedBy,Px (Build: 1385 : e07edbb0bdaaa9bd528a420558a1f78ada5c9206)
+13,!MasterMixVersion,N/A
+14,Notes,CFS CSF
+15,!ProcessSteps,"Raw RFU, Hyb Normalization, plateScale, Median Normalization (SampleType, SampleMatrix), Filtered"
+16,!ProteinEffectiveDate,2016-10-31
+17,RunNotes,
+18,StudyMatrix,
+19,StudyOrganism,
+20,!Title,CHI-19-027
+21,AssaySite,CHI
+22,CalibratorId,QC_CHI3
+23,AssayPlatform,HTS
+24,KitLot,Set 001:190343
+25,ReportConfig,"{""analysisSteps"":[{""stepType"":""hybNorm"",""referenceSource"":""intraplate""},{""stepType"":""plateScale"",""referenceSource"":""CHI_Tec_2018CustomCSFCal_QC3_CLTH_4.2_20161012_1.5k""},{""stepType"":""medNorm"",""referenceSource"":""intraplate"",""referenceFields"":[""SampleType"",""SampleMatrix""]},{""stepType"":""calibrate"",""referenceSource"":""CHI_Tec_2018CustomCSFCal_QC3_CLTH_4.2_20161012_1.5k"",""passFailCriteria"":""scaleFactor"",""tailThreshold"":10.0}],""qcMetrics"":{""passFailCriteria"":""scaleFactor""},""qualityReports"":[""SQS Report""],""filter"":{""somascanMenuVersion"":""1.3k_v02"",""proteinEffectiveDate"":""2016-10-31"",""includeSomamerTypes"":[""Hybridization Control Elution""],""filteredMetadata"":[""hybNorm_ReferenceRFU""],""includeSampleTypes"":[""Buffer"",""Calibrator"",""QC"",""QC_CHI"",""SML_QC""]}}"
+26,HybNormReference,intraplate
+27,PlateScale_Scalar_Set_001,0.902
+28,PlateScale_ReferenceSource,CHI_Tec_2018CustomCSFCal_QC3_CLTH_4.2_20161012_1.5k
+29,PlateScale_PassFlag_Set_001,PASS
+30,MedNormReference,intraplate
+31,!SomascanMenuVersion,1.3k_v02
+32,!FilteringOptions,"somascanMenuVersion + 1.3k_v02, filteredMetadata + [hybNorm_ReferenceRFU], includeSampleTypes + [Buffer, Calibrator, QC, QC_CHI, SML_QC], includeSomamerTypes + [Hybridization Control Elution]"

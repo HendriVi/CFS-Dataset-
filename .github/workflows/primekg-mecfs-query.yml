@@ -1,0 +1,166 @@
+name: PrimeKG ME-CFS systems query
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install analysis dependencies
+        run: pip install pandas pyarrow
+      - name: Download PrimeKG and query ME-CFS systems
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p primekg_output
+          curl --fail --location --retry 5 --retry-all-errors \
+            'https://dataverse.harvard.edu/api/access/datafile/6180620' \
+            -o primekg.csv
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          import pandas as pd
+
+          source = Path('primekg.csv')
+          out = Path('primekg_output')
+          out.mkdir(exist_ok=True)
+
+          genes = {
+              'CD19','IGHM','CD79A','TNFRSF13C','CXCR5','CR2','EBF1','P2RX5','BCL7A',
+              'STAT4','TLR9','NFKB1','RELA','IL10','PDCD1','CD226','LTA','LTB','SERPINF1',
+              'LTA4H','UCHL1','CD93','PLG','PLA2G7','CCL11','LAG3','PF4','SLAMF6','APOB',
+              'FCRL3','TYK2','IFNL2','TNFRSF8','EPO','C3','CFH','IGFBP2','IGFBP5','TIMP2',
+              'THBS2','RARRES2','FSTL1','BMPR2','CCL19','CD84','HBEGF','RELT','MMP3','POMC',
+              'MTFP1','ELOVL2','ALDOA','CPT1B','PPARGC1A','NDUFS1','COX5A','ACADM','HADHA'
+          }
+          phrases = [
+              'chronic fatigue syndrome','myalgic encephalomyelitis','postviral fatigue',
+              'fatigue','exercise intolerance','post-exertional malaise','orthostatic intolerance',
+              'postural orthostatic tachycardia','orthostatic hypotension','cognitive impairment',
+              'sleep disturbance','muscle weakness','autonomic dysfunction','endothelial dysfunction'
+          ]
+
+          header = pd.read_csv(source, nrows=0)
+          cols = list(header.columns)
+          required = ['x_index','x_id','x_type','x_name','y_index','y_id','y_type','y_name']
+          missing = [c for c in required if c not in cols]
+          if missing:
+              raise RuntimeError(f'Unexpected PrimeKG schema. Missing {missing}; columns={cols}')
+          usecols = [c for c in cols if c in {
+              'relation','display_relation','x_index','x_id','x_type','x_name','x_source',
+              'y_index','y_id','y_type','y_name','y_source'
+          }]
+
+          def norm(s):
+              return s.fillna('').astype(str).str.strip().str.lower()
+
+          first = []
+          seed_ids = set()
+          disease_rows = []
+          phrase_regex = re.compile('|'.join(re.escape(x) for x in phrases), re.I)
+          genes_lower = {g.lower() for g in genes}
+
+          for chunk in pd.read_csv(source, usecols=usecols, chunksize=250_000, low_memory=False):
+              xn, yn = norm(chunk['x_name']), norm(chunk['y_name'])
+              exact_gene = xn.isin(genes_lower) | yn.isin(genes_lower)
+              phrase_hit = xn.str.contains(phrase_regex, na=False) | yn.str.contains(phrase_regex, na=False)
+              hit = exact_gene | phrase_hit
+              if hit.any():
+                  sub = chunk.loc[hit].copy()
+                  first.append(sub)
+                  for side in ('x','y'):
+                      names = norm(sub[f'{side}_name'])
+                      sel = names.isin(genes_lower) | names.str.contains(phrase_regex, na=False)
+                      seed_ids.update(sub.loc[sel, f'{side}_index'].dropna().astype(str))
+                  disease_sel = (
+                      xn.loc[hit].str.contains('chronic fatigue syndrome|myalgic encephalomyelitis|postviral fatigue', regex=True, na=False)
+                      | yn.loc[hit].str.contains('chronic fatigue syndrome|myalgic encephalomyelitis|postviral fatigue', regex=True, na=False)
+                  )
+                  if disease_sel.any():
+                      disease_rows.append(sub.loc[disease_sel.values])
+
+          first_df = pd.concat(first, ignore_index=True).drop_duplicates() if first else pd.DataFrame(columns=usecols)
+          disease_df = pd.concat(disease_rows, ignore_index=True).drop_duplicates() if disease_rows else pd.DataFrame(columns=usecols)
+          first_df.to_csv(out/'primekg_seed_matches.csv', index=False)
+          disease_df.to_csv(out/'primekg_mecfs_disease_edges.csv', index=False)
+
+          direct = []
+          for chunk in pd.read_csv(source, usecols=usecols, chunksize=250_000, low_memory=False):
+              hit = chunk['x_index'].astype(str).isin(seed_ids) | chunk['y_index'].astype(str).isin(seed_ids)
+              if hit.any():
+                  direct.append(chunk.loc[hit].copy())
+          direct_df = pd.concat(direct, ignore_index=True).drop_duplicates() if direct else pd.DataFrame(columns=usecols)
+          direct_df.to_csv(out/'primekg_seed_neighborhood.csv', index=False)
+
+          # Build compact two-hop paths from selected genes to ME/CFS/fatigue/autonomic phenotypes.
+          edge_records = direct_df.to_dict('records')
+          adjacency = {}
+          node_meta = {}
+          for r in edge_records:
+              xi, yi = str(r['x_index']), str(r['y_index'])
+              node_meta[xi] = (r.get('x_name',''), r.get('x_type',''))
+              node_meta[yi] = (r.get('y_name',''), r.get('y_type',''))
+              adjacency.setdefault(xi, []).append((yi, r.get('display_relation', r.get('relation',''))))
+              adjacency.setdefault(yi, []).append((xi, r.get('display_relation', r.get('relation',''))))
+
+          gene_ids = {nid for nid,(name,typ) in node_meta.items() if str(name).strip().lower() in genes_lower}
+          target_ids = {nid for nid,(name,typ) in node_meta.items() if phrase_regex.search(str(name) or '')}
+          paths = []
+          for gid in gene_ids:
+              for mid, rel1 in adjacency.get(gid, []):
+                  for tid, rel2 in adjacency.get(mid, []):
+                      if tid in target_ids and tid != gid:
+                          paths.append({
+                              'gene_id': gid, 'gene': node_meta[gid][0],
+                              'relation_1': rel1, 'intermediate_id': mid,
+                              'intermediate': node_meta.get(mid,('', ''))[0],
+                              'intermediate_type': node_meta.get(mid,('', ''))[1],
+                              'relation_2': rel2, 'target_id': tid,
+                              'target': node_meta[tid][0], 'target_type': node_meta[tid][1]
+                          })
+          paths_df = pd.DataFrame(paths).drop_duplicates() if paths else pd.DataFrame()
+          paths_df.to_csv(out/'primekg_two_hop_paths.csv', index=False)
+
+          if len(direct_df):
+              rel_col = 'display_relation' if 'display_relation' in direct_df else 'relation'
+              summary = (
+                  direct_df.groupby([rel_col,'x_type','y_type'], dropna=False)
+                  .size().reset_index(name='edge_count').sort_values('edge_count', ascending=False)
+              )
+          else:
+              summary = pd.DataFrame()
+          summary.to_csv(out/'primekg_relation_summary.csv', index=False)
+
+          metadata = {
+              'source_url': 'https://dataverse.harvard.edu/api/access/datafile/6180620',
+              'source_file_bytes': source.stat().st_size,
+              'columns': cols,
+              'selected_genes': sorted(genes),
+              'phenotype_phrases': phrases,
+              'seed_match_edges': len(first_df),
+              'mecfs_disease_edges': len(disease_df),
+              'seed_node_ids': len(seed_ids),
+              'neighborhood_edges': len(direct_df),
+              'two_hop_paths': len(paths_df),
+              'interpretation_warning': 'Knowledge-graph edges generate mechanistic hypotheses; they do not establish causality, diagnosis, or treatment efficacy.'
+          }
+          (out/'primekg_query_metadata.json').write_text(json.dumps(metadata, indent=2))
+          print(json.dumps(metadata, indent=2))
+          PY
+      - name: Upload PrimeKG query outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: primekg-mecfs-query
+          path: primekg_output/
+          retention-days: 1
+          if-no-files-found: error

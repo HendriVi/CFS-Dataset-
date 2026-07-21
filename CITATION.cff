@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Cite this repository and the original study-specific sources listed in documentation/citations.bib."
+title: "ME/CFS Open Dataset Workspace"
+type: dataset
+authors:
+  - family-names: "Vieli"
+    given-names: "Hendri"
+repository-code: "https://github.com/HendriVi/CFS-Dataset-"
+license: MIT
+version: "1.0.0"
+date-released: "2026-07-21"

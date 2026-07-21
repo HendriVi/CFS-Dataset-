@@ -1,0 +1,100 @@
+name: Build validated ME/CFS dataset release
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_zip_integrity_test:
+        description: "CRC-test every member of the GB-scale imaging ZIPs"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "requirements.txt"
+      - ".github/workflows/build-release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mecfs-dataset-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download authoritative open originals
+        run: python scripts/download_datasets.py --root .
+
+      - name: Recreate harmonized tables
+        run: python scripts/harmonize_datasets.py --root .
+
+      - name: Rebuild provenance and checksum documentation
+        run: python scripts/build_manifest.py --root .
+
+      - name: Validate files
+        run: |
+          if [[ "${{ inputs.full_zip_integrity_test }}" == "true" ]]; then
+            python scripts/validate_files.py --root . --full-zip-test | tee documentation/validation_run.txt
+          else
+            python scripts/validate_files.py --root . | tee documentation/validation_run.txt
+          fi
+
+      - name: Commit analysis-ready tables and documentation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f datasets/harmonized documentation
+          if ! git diff --cached --quiet; then
+            git commit -m "Update generated harmonized datasets [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Build release assets
+        run: python scripts/build_release_assets.py --root . --output dist --split-size-mib 1500
+
+      - name: Write release notes
+        run: |
+          cat > dist/RELEASE_NOTES.md <<'NOTES'
+          # Validated ME/CFS open dataset bundle
+
+          Generated on GitHub Actions from authoritative NCBI GEO, Dryad and Zenodo endpoints using the versioned scripts in this repository.
+
+          ## Assets
+          - `mecfs_analysis_ready.zip`: harmonized CSV/CSV.GZ tables, documentation, notebook and scripts; excludes GB-scale originals.
+          - `mecfs_full_bundle.zip.part-*`: complete byte-preserved originals plus harmonized outputs, split for reliable downloading.
+          - `reassemble_full_bundle.*`: Windows, macOS/Linux and Python reassembly tools.
+          - `SHA256SUMS.txt`: checksums for every release asset and the reassembled full ZIP.
+
+          Restricted or agreement-governed datasets were not accessed. The Dryad spreadsheet remains absent when its authoritative endpoint returns HTTP 403; no unofficial mirror is substituted.
+          NOTES
+
+      - name: Publish versioned GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            dist/mecfs_analysis_ready.zip \
+            dist/mecfs_full_bundle.zip.part-* \
+            dist/reassemble_full_bundle.py \
+            dist/reassemble_full_bundle.sh \
+            dist/reassemble_full_bundle.bat \
+            dist/SHA256SUMS.txt \
+            --title "ME/CFS Open Dataset Bundle $TAG" \
+            --notes-file dist/RELEASE_NOTES.md \
+            --latest

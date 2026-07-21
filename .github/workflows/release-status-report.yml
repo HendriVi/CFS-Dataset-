@@ -1,0 +1,18 @@
+name: Report dataset release workflow status
+
+on:
+  pull_request:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List recent release workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow build-release.yml --limit 10 --json databaseId,status,conclusion,headSha,createdAt,updatedAt,url,displayTitle

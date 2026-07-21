@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+dist/
+.DS_Store
+# Authoritative originals are downloaded locally or distributed through Releases.
+datasets/original/*
+!datasets/original/.gitkeep

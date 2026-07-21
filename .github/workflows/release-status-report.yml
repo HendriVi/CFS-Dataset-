@@ -4,21 +4,21 @@ on:
   pull_request:
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel stale release run
+      - name: Show latest dataset release and assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run cancel 29844057282 --repo "$GITHUB_REPOSITORY" || true
+          gh release view --repo "$GITHUB_REPOSITORY" --json name,tagName,url,isLatest,publishedAt,assets
 
-      - name: List recent release workflow runs
+      - name: Show final build status
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run list --repo "$GITHUB_REPOSITORY" --workflow build-release.yml --limit 10 --json databaseId,status,conclusion,headSha,createdAt,updatedAt,url,displayTitle
+          gh run view 29844128041 --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt

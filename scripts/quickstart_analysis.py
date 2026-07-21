@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
+PIPELINE_VERSION = "1.0.0"
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "datasets" / "harmonized"
 
 
 def main() -> int:
-    print("ME/CFS harmonized dataset workspace")
+    print(f"ME/CFS harmonized dataset workspace v{PIPELINE_VERSION}")
     print(f"Data directory: {DATA}")
     files = sorted(DATA.glob("*.csv*")) if DATA.exists() else []
     print(f"Harmonized files: {len(files)}")
